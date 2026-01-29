@@ -3,7 +3,7 @@ This repository provides the official implementation of **EFANet**, an evidenceâ
 
 EFANet explicitly models **class-discriminative visual evidence** and produces **faithful, localized explanations** while maintaining competitive recognition performance.
 
-![intro](./samples/intro.png)
+![intro](./samples/intro.jpg)
 
 ---
 
