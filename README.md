@@ -3,7 +3,7 @@ This repository provides the official implementation of **EFANet**, an evidenceâ
 
 EFANet explicitly models **class-discriminative visual evidence** and produces **faithful, localized explanations** while maintaining competitive recognition performance.
 
-![intro]([./samples/intro.jpg](https://github.com/Gujia-jiangnan/EFANet/blob/main/samples/intro.jpg))
+![intro](https://github.com/Gujia-jiangnan/EFANet/blob/main/samples/intro.jpg)
 
 ---
 
@@ -133,3 +133,4 @@ EFANet supports:
 ```bash
 python evaluate_faithfulness.py
 ```
+
