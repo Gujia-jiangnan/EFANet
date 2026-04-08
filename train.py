@@ -42,7 +42,7 @@ from timm.optim import create_optimizer_v2, optimizer_kwargs
 from timm.scheduler import create_scheduler_v2, scheduler_kwargs
 from timm.utils import ApexScaler, NativeScaler
 
-from models import proto_vit_model
+from models import efanet
 
 try:
     from apex import amp
@@ -434,60 +434,17 @@ def _parse_args():
     args_text = yaml.safe_dump(args.__dict__, default_flow_style=False)
     return args, args_text
 
-# def build_custom_param_groups(model, base_lr, weight_decay):
-#     # 1. 获取模型原本定义的不需要 decay 的参数（如 pos_embed, cls_token）
-#     skip = {}
-#     if hasattr(model, 'no_weight_decay'):
-#         skip = model.no_weight_decay()
-    
-#     # 2. 定义高学习率的模块关键词
-#     high_lr_modules = {'prototypes', 'heads'}
-    
-#     groups = []
-#     for name, param in model.named_parameters():
-#         if not param.requires_grad:
-#             continue
-
-#         # --- 设定学习率 ---
-#         # 如果参数名包含 prototypes 或 heads，则给 10 倍学习率
-#         if any(k in name for k in high_lr_modules):
-#             cur_lr = base_lr * 10.0
-#         else:
-#             cur_lr = base_lr
-
-#         # --- 设定 Weight Decay ---
-#         # 满足以下任意条件，WD 设为 0：
-#         # 1. 参数在模型的 no_weight_decay 列表中
-#         # 2. 是 Bias
-#         # 3. 是一维张量（通常是 LayerNorm 的 weight）
-#         # 4. 是 prototypes (Embedding 向量不应该 decay)
-#         if (name in skip) or (name.endswith('.bias')) or (param.ndim <= 1) or ('prototypes' in name):
-#             cur_wd = 0.0
-#         else:
-#             cur_wd = weight_decay
-        
-#         groups.append({
-#             'params': param,
-#             'weight_decay': cur_wd,
-#             'lr': cur_lr
-#         })
-#     return groups
 def build_custom_param_groups(model, base_lr, weight_decay):
-    # 设定三个档位的倍率
-    module_scale = 10.0  # 你的新模块：10倍
-    bridge_scale = 5.0   # 最后一层Block：5倍 (承上启下)
+
+    module_scale = 10.0
+    bridge_scale = 5.0
     
-    # 找到 Backbone 中最后一层 Block 的名字
-    # 通常 timm/vit 的命名是 blocks.11 或者 layers.11
-    # 我们这里动态获取一下
     last_block_name = None
     if hasattr(model, 'blocks'):
         last_block_name = f"blocks.{len(model.blocks)-1}" 
     elif hasattr(model, 'layers'):
-        # 针对部分变体
         last_block_name = f"layers.{len(model.layers)-1}"
     
-    # 某些层不进行 decay
     skip = {}
     if hasattr(model, 'no_weight_decay'):
         skip = model.no_weight_decay()
@@ -498,30 +455,21 @@ def build_custom_param_groups(model, base_lr, weight_decay):
         if not param.requires_grad:
             continue
 
-        # 1. 基础设置
         cur_lr = base_lr
         cur_wd = weight_decay
 
-        # 处理 No Weight Decay
         if (name in skip) or (name.endswith('.bias')) or (param.ndim <= 1):
             cur_wd = 0.0
             
-        # 强制 Prototypes 0 Decay (无论如何都要保留)
         if 'prototypes' in name:
             cur_wd = 0.0
 
-        # --- 核心逻辑：三段式速度 ---
-        
-        # A. 你的模块 (Heads + Prototypes) -> 10倍
         if 'prototypes' in name or 'heads' in name or 'aux_head' in name:
             cur_lr = base_lr * module_scale
             
-        # B. 桥梁层 (Backbone 最后一层 + 最终的 Norm 层) -> 5倍
-        # 注意：通常 ViT 还有个 norm 层在 head 之前，也要加速
         elif (last_block_name is not None and last_block_name in name) or ('norm.' in name and 'blocks' not in name):
             cur_lr = base_lr * bridge_scale
             
-        # C. 剩下的底层 Backbone -> 1倍
         else:
             cur_lr = base_lr
 
